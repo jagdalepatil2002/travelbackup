@@ -10,7 +10,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const closeButton = document.querySelector('.close-button');
     const listenButton = document.getElementById('listen-button');
 
-    const API_BASE_URL = 'http://127.0.0.1:5000';
+    const API_BASE_URL = 'https://backendtravel-pgzt.onrender.com';
 
     // --- Event Listeners ---
 
