@@ -1,138 +1,62 @@
 import os
-import psycopg2
-from psycopg2.extras import RealDictCursor
+from flask_sqlalchemy import SQLAlchemy
 from dotenv import load_dotenv
 
-# --- Database Connection ---
-def get_db_connection():
-    """Establishes a connection to the PostgreSQL database."""
-    conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
-    return conn
+# 1. Create the SQLAlchemy instance. This is the central object.
+db = SQLAlchemy()
 
-# --- Table Setup ---
+# 2. Define your database models using the 'db' object.
+#    SQLAlchemy will use these models to create the table schema.
+class Place(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(255), unique=True, nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    image_url = db.Column(db.String(1024), nullable=True)
+
+class Cache(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    search_term = db.Column(db.String(255), unique=True, nullable=False)
+    results = db.Column(db.JSON, nullable=False)
+
+# 3. Define a simple init function that uses SQLAlchemy to create tables.
+#    This function will create tables based on the models defined above.
 def init_db():
     """Initializes and updates the database schema."""
-    conn = get_db_connection()
-    cur = conn.cursor()
-    
-    # Alter existing places table to add new columns and make detailed_description nullable
-    cur.execute('''
-        ALTER TABLE places ADD COLUMN IF NOT EXISTS short_description TEXT;
-        ALTER TABLE places ADD COLUMN IF NOT EXISTS image_url VARCHAR(1024);
-        ALTER TABLE places ALTER COLUMN detailed_description DROP NOT NULL;
-    ''')
-    
-    # Create a new table to cache search results
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS search_cache (
-            id SERIAL PRIMARY KEY,
-            search_term VARCHAR(255) UNIQUE NOT NULL,
-            result_place_names TEXT[] NOT NULL,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-        );
-    ''')
-    
-    conn.commit()
-    cur.close()
-    conn.close()
-    print("Database schema updated.")
+    db.create_all()
+    print("Database schema checked/updated.")
 
-# --- Data Operations ---
-def get_cached_search(search_term):
-    """Retrieves a cached search result from the database."""
-    conn = get_db_connection()
-    # Use RealDictCursor to get results as dictionaries
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-    
-    # First, find the cached search term
-    cur.execute("SELECT result_place_names FROM search_cache WHERE search_term = %s", (search_term,))
-    cache_result = cur.fetchone()
-    
-    if not cache_result:
-        cur.close()
-        conn.close()
-        return None
+# 4. Define your database helper functions using the ORM.
+def get_cached_search(location):
+    """Retrieves cached search results for a location."""
+    cache_entry = Cache.query.filter_by(search_term=location).first()
+    return cache_entry.results if cache_entry else None
 
-    # If found, fetch all the associated places
-    place_names = cache_result['result_place_names']
-    query = "SELECT place_name, short_description, image_url, (detailed_description IS NOT NULL) as has_details FROM places WHERE place_name = ANY(%s)"
-    cur.execute(query, (place_names,))
-    places = cur.fetchall()
-    
-    cur.close()
-    conn.close()
-    
-    # Preserve the order from the original search
-    ordered_places = sorted(places, key=lambda p: place_names.index(p['place_name']))
-    return ordered_places
-
-def save_search_result(search_term, places):
-    """Saves a new search result and the associated places to the database."""
-    conn = get_db_connection()
-    cur = conn.cursor()
-    
-    place_names = [p['name'] for p in places]
-
-    try:
-        # Use a transaction to ensure both inserts succeed or fail together
-        # 1. Insert or update the places themselves
-        for place in places:
-            cur.execute("""
-                INSERT INTO places (place_name, short_description, image_url)
-                VALUES (%s, %s, %s)
-                ON CONFLICT (place_name) DO UPDATE SET
-                    short_description = EXCLUDED.short_description,
-                    image_url = EXCLUDED.image_url;
-            """, (place['name'], place['description'], place['image_url']))
-
-        # 2. Insert the search term and the list of place names
-        cur.execute("""
-            INSERT INTO search_cache (search_term, result_place_names)
-            VALUES (%s, %s)
-            ON CONFLICT (search_term) DO NOTHING;
-        """, (search_term, place_names))
-        
-        conn.commit()
-    except Exception as e:
-        print(f"Database save error: {e}")
-        conn.rollback()
-    finally:
-        cur.close()
-        conn.close()
+def save_search_result(location, places):
+    """Saves a list of places to the search cache."""
+    existing_cache = Cache.query.filter_by(search_term=location).first()
+    if existing_cache:
+        existing_cache.results = places
+    else:
+        new_cache = Cache(search_term=location, results=places)
+        db.session.add(new_cache)
+    db.session.commit()
 
 def get_place_details(place_name):
-    """Retrieves detailed description for a place from the database."""
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT detailed_description FROM places WHERE place_name = %s", (place_name,))
-    result = cur.fetchone()
-    cur.close()
-    conn.close()
-    # Return the description only if it exists and is not NULL
-    return result[0] if result and result[0] is not None else None
+    """Retrieves detailed description for a place."""
+    place = Place.query.filter_by(name=place_name).first()
+    return place.description if place and place.description else None
 
-def save_place_details(place_name, description):
-    """Saves or updates the detailed description for a place."""
-    conn = get_db_connection()
-    cur = conn.cursor()
-    try:
-        # The place already exists from the initial search, so we UPDATE it.
-        cur.execute(
-            """
-            UPDATE places 
-            SET detailed_description = %s 
-            WHERE place_name = %s
-            """,
-            (description, place_name)
-        )
-        conn.commit()
-        print(f"Successfully cached detailed description for '{place_name}'")
-    except Exception as e:
-        print(f"Error saving detailed description for '{place_name}': {e}")
-        conn.rollback()
-    finally:
-        cur.close()
-        conn.close()
+def save_place_details(place_name, description, image_url=None):
+    """Saves or updates the detailed description and image for a place."""
+    place = Place.query.filter_by(name=place_name).first()
+    if place:
+        place.description = description
+        if image_url:
+            place.image_url = image_url
+    else:
+        new_place = Place(name=place_name, description=description, image_url=image_url)
+        db.session.add(new_place)
+    db.session.commit()
 
 # Initialize the database when the application starts
 if __name__ == '__main__':
