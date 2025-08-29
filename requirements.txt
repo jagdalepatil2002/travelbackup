@@ -1,7 +1,10 @@
+
 Flask
 Flask-Cors
-gunicorn
+Flask-SQLAlchemy
+SQLAlchemy
 requests
-google-generativeai
 python-dotenv
+google-generativeai
+murf
 psycopg2-binary
