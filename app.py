@@ -8,14 +8,11 @@ from database import db, init_db, get_cached_search, save_search_result, get_pla
 import google.generativeai as genai
 from dotenv import load_dotenv
 from murf import Murf
-
-import logging
 # --- Initialization ---
 load_dotenv()
 app = Flask(__name__)
 # In production, it's better to restrict this to your frontend's domain
-# For example: CORS(app, resources={r"/*": {"origins": "https://your-frontend.onrender.com"}})
-CORS(app) 
+CORS(app, resources={r"/*": {"origins": "https://travelgenie-9t7r.onrender.com"}})
 
 # Configure Database
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
@@ -27,17 +24,14 @@ db.init_app(app)
 def init_db_command():
     """Initializes the database."""
     init_db()
-    app.logger.info("Database initialized.")
 
 # Configure Gemini API
 try:
     genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
     model = genai.GenerativeModel('gemini-1.5-flash-latest')
 except Exception as e:
-    app.logger.error(f"Error configuring Gemini API: {e}")
     model = None
 
-logging.basicConfig(level=logging.INFO)
 # --- Helper Functions ---
 def get_wikipedia_image_url(place_name):
     """Fetches the main image URL for a place from Wikipedia."""
@@ -65,7 +59,7 @@ def get_wikipedia_image_url(place_name):
             if "thumbnail" in pages[page_id]:
                 return pages[page_id]["thumbnail"]["source"]
     except Exception as e:
-        app.logger.error(f"Wikipedia API error for {place_name}: {e}")
+        pass
     return None
 
 # --- API Endpoints ---
@@ -87,16 +81,12 @@ def search_places():
     # 1. Check for a cached search result first
     cached_places = get_cached_search(location)
     if cached_places:
-        app.logger.info(f"Cache hit for search term: '{location}'")
         return jsonify({"places": cached_places, "token_count": 0})
 
     # 2. If not cached, call LLM
-    app.logger.info(f"Cache miss for search term: '{location}'. Calling LLM.")
     prompt = prompts.get_initial_search_prompt(location)
     try:
         response = model.generate_content(prompt)
-        token_count = response.usage_metadata.total_token_count
-        app.logger.info(f"Search places token count: {token_count}")
 
         clean_response = response.text.strip().replace("```json", "").replace("```", "")
         places_from_llm = json.loads(clean_response)
@@ -107,11 +97,10 @@ def search_places():
 
         # 3. Save the new result to the database for future requests
         save_search_result(location, places_from_llm)
-
+        token_count = response.usage_metadata.total_token_count
         return jsonify({"places": places_from_llm, "token_count": token_count})
 
     except Exception as e:
-        app.logger.error(f"Error during place search: {e}")
         return jsonify({"error": "Failed to fetch places from AI model."}), 500
 
 @app.route('/place-details', methods=['POST'])
@@ -132,31 +121,26 @@ def get_place_details_route():
     # 1. Check database first
     cached_details = get_place_details(place_name)
     if cached_details:
-        app.logger.info(f"Cache hit for {place_name}")
         return jsonify({"description": cached_details, "token_count": 0})
 
     # 2. If not in DB, call LLM
-    app.logger.info(f"Cache miss for {place_name}. Calling LLM.")
     prompt = prompts.get_detailed_description_prompt(place_name)
     try:
         response = model.generate_content(prompt)
-        token_count = response.usage_metadata.total_token_count
-        app.logger.info(f"Place details token count: {token_count}")
         detailed_description = response.text
+        token_count = response.usage_metadata.total_token_count
 
         # 3. Save to database for future requests
         save_place_details(place_name, detailed_description)
 
         return jsonify({"description": detailed_description, "token_count": token_count})
     except Exception as e:
-        app.logger.error(f"Error during detail generation: {e}")
         return jsonify({"error": "Failed to generate details from AI model."}), 500
 
 # --- Text-to-Speech Endpoint ---
 @app.route('/api/text-to-speech', methods=['POST'])
 def text_to_speech():
     data = request.get_json()
-    logging.info(f"text_to_speech request, data = {data}")
     text_to_speak = data.get('text')
 
     if not text_to_speak:
@@ -164,17 +148,15 @@ def text_to_speech():
 
     # Truncate text to fit within Murf's 3000 character limit
     if len(text_to_speak) > 3000:
-        app.logger.warning(f"Text length ({len(text_to_speak)}) exceeds 3000 characters. Truncating.")
         text_to_speak = text_to_speak[:3000]
 
     try:
         if not os.getenv("MURF_API_KEY"):
             raise ValueError("MURF_API_KEY not found in environment variables.")
-        
+
         client = Murf()
         voice_id = "en-US-terrell"
-        
-        app.logger.info(f"Calling Murf API for text-to-speech (voice: {voice_id}).")
+
         speech_response = client.text_to_speech.generate(
             text=text_to_speak,
             voice_id=voice_id
@@ -184,14 +166,11 @@ def text_to_speech():
         audio_url = getattr(speech_response, 'audio_file', None)
 
         if not audio_url:
-            app.logger.error(f"Murf API call succeeded but no audio_file URL was found in the response. Response: {speech_response}")
             raise ValueError("No audio URL in Murf API response.")
 
-        app.logger.info(f"Successfully generated audio URL: {audio_url}")
         return jsonify({"audio_url": audio_url})
 
     except Exception as e:
-        app.logger.error(f"Error calling Murf API: {e}", exc_info=True)
         return jsonify({"error": f"Failed to convert text to speech: {str(e)}"}), 502
 
 # --- Run Application ---
