@@ -152,9 +152,5 @@ def get_place_details():
         print(f"Error during detail generation: {e}")
         return jsonify({"error": "Failed to generate details from AI model."}), 500
 
-
-
-    # Initialize the database (creates table if it doesn't exist)
-    database.init_db()
-    # Run the Flask app
-    app.run(debug=True, port=5000)
+# The 'if __name__ == "__main__"' block has been removed to allow a production
+# server like Gunicorn to run the application.
