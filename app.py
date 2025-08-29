@@ -13,12 +13,21 @@ from murf import Murf
 load_dotenv()
 app = Flask(__name__)
 
-# Fixed CORS configuration - more permissive for the TTS endpoint
+# CORS Configuration
 CORS(app, 
      origins=["https://travelgenie-9t7r.onrender.com"], 
      methods=["GET", "POST", "OPTIONS"], 
      allow_headers=["Content-Type", "Authorization"],
      supports_credentials=True)
+
+# Global CORS handler
+@app.after_request
+def after_request(response):
+    response.headers.add('Access-Control-Allow-Origin', 'https://travelgenie-9t7r.onrender.com')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+    response.headers.add('Access-Control-Allow-Credentials', 'true')
+    return response
 
 # Configure Database
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
@@ -45,7 +54,7 @@ def get_wikipedia_image_url(place_name):
     url = "https://en.wikipedia.org/w/api.php"
     
     headers = {
-        'User-Agent': 'AITravelPlanner/1.0 (github.com/your-username/your-repo)' # Be a good internet citizen!
+        'User-Agent': 'AITravelPlanner/1.0 (github.com/your-username/your-repo)'
     }
 
     params = {
@@ -153,27 +162,33 @@ def get_place_details_route():
 def text_to_speech():
     # Handle preflight OPTIONS request
     if request.method == 'OPTIONS':
-        response = Response()
-        response.headers.add('Access-Control-Allow-Origin', 'https://travelgenie-9t7r.onrender.com')
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
-        response.headers.add('Access-Control-Allow-Methods', 'POST,OPTIONS')
-        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        response = Response(status=200)
+        response.headers['Access-Control-Allow-Origin'] = 'https://travelgenie-9t7r.onrender.com'
+        response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        response.headers['Access-Control-Max-Age'] = '3600'
         return response
 
-    data = request.get_json()
-    if not data:
-        return jsonify({"error": "No JSON data provided"}), 400
-        
-    text_to_speak = data.get('text')
-
-    if not text_to_speak:
-        return jsonify({"error": "No text provided"}), 400
-
-    # Truncate text to fit within Murf's 3000 character limit
-    if len(text_to_speak) > 3000:
-        text_to_speak = text_to_speak[:3000]
+    # Add CORS headers to all responses
+    def add_cors_headers(response):
+        response.headers['Access-Control-Allow-Origin'] = 'https://travelgenie-9t7r.onrender.com'
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        return response
 
     try:
+        data = request.get_json()
+        if not data:
+            return add_cors_headers(jsonify({"error": "No JSON data provided"})), 400
+            
+        text_to_speak = data.get('text')
+        if not text_to_speak:
+            return add_cors_headers(jsonify({"error": "No text provided"})), 400
+
+        # Truncate text to fit within Murf's 3000 character limit
+        if len(text_to_speak) > 3000:
+            text_to_speak = text_to_speak[:3000]
+
         if not os.getenv("MURF_API_KEY"):
             raise ValueError("MURF_API_KEY not found in environment variables.")
 
@@ -185,26 +200,15 @@ def text_to_speech():
             voice_id=voice_id
         )
 
-        # The murf-api library response object has an 'audio_file' attribute with the URL
         audio_url = getattr(speech_response, 'audio_file', None)
-
         if not audio_url:
             raise ValueError("No audio URL in Murf API response.")
 
-        response = jsonify({"audio_url": audio_url})
-        response.headers.add('Access-Control-Allow-Origin', 'https://travelgenie-9t7r.onrender.com')
-        response.headers.add('Access-Control-Allow-Credentials', 'true')
-        return response
+        return add_cors_headers(jsonify({"audio_url": audio_url}))
 
     except Exception as e:
-        error_response = jsonify({"error": f"Failed to convert text to speech: {str(e)}"})
-        error_response.headers.add('Access-Control-Allow-Origin', 'https://travelgenie-9t7r.onrender.com')
-        error_response.headers.add('Access-Control-Allow-Credentials', 'true')
-        return error_response, 502
+        return add_cors_headers(jsonify({"error": f"Failed to convert text to speech: {str(e)}"})), 502
 
 # --- Run Application ---
 if __name__ == '__main__':
-    # This block is for local development only.
-    # In production, use a WSGI server like Gunicorn.
-    # The database can be initialized via the command in render.yaml or a separate script.
     app.run(debug=True, port=5000)
