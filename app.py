@@ -8,11 +8,17 @@ from database import db, init_db, get_cached_search, save_search_result, get_pla
 import google.generativeai as genai
 from dotenv import load_dotenv
 from murf import Murf
+
 # --- Initialization ---
 load_dotenv()
 app = Flask(__name__)
-# In production, it's better to restrict this to your frontend's domain
-CORS(app, resources={r"/*": {"origins": "https://travelgenie-9t7r.onrender.com"}}, allow_headers=["Content-Type"])
+
+# Fixed CORS configuration - more permissive for the TTS endpoint
+CORS(app, 
+     origins=["https://travelgenie-9t7r.onrender.com"], 
+     methods=["GET", "POST", "OPTIONS"], 
+     allow_headers=["Content-Type", "Authorization"],
+     supports_credentials=True)
 
 # Configure Database
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
@@ -63,6 +69,11 @@ def get_wikipedia_image_url(place_name):
     return None
 
 # --- API Endpoints ---
+@app.route('/')
+def health_check():
+    """A simple health check endpoint to confirm the server is running."""
+    return "Backend is running."
+
 @app.route('/search-places', methods=['POST'])
 def search_places():
     """
@@ -104,7 +115,7 @@ def search_places():
         return jsonify({"error": "Failed to fetch places from AI model."}), 500
 
 @app.route('/place-details', methods=['POST'])
-def get_place_details():
+def get_place_details_route():
     """
     Endpoint to get detailed, conversational info about a single place.
     Checks the database first before making the second, more expensive LLM call.
@@ -138,9 +149,21 @@ def get_place_details():
         return jsonify({"error": "Failed to generate details from AI model."}), 500
 
 # --- Text-to-Speech Endpoint ---
-@app.route('/api/text-to-speech', methods=['POST'])
+@app.route('/api/text-to-speech', methods=['POST', 'OPTIONS'])
 def text_to_speech():
+    # Handle preflight OPTIONS request
+    if request.method == 'OPTIONS':
+        response = Response()
+        response.headers.add('Access-Control-Allow-Origin', 'https://travelgenie-9t7r.onrender.com')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+        response.headers.add('Access-Control-Allow-Methods', 'POST,OPTIONS')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response
+
     data = request.get_json()
+    if not data:
+        return jsonify({"error": "No JSON data provided"}), 400
+        
     text_to_speak = data.get('text')
 
     if not text_to_speak:
@@ -168,10 +191,16 @@ def text_to_speech():
         if not audio_url:
             raise ValueError("No audio URL in Murf API response.")
 
-        return jsonify({"audio_url": audio_url})
+        response = jsonify({"audio_url": audio_url})
+        response.headers.add('Access-Control-Allow-Origin', 'https://travelgenie-9t7r.onrender.com')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response
 
     except Exception as e:
-        return jsonify({"error": f"Failed to convert text to speech: {str(e)}"}), 502
+        error_response = jsonify({"error": f"Failed to convert text to speech: {str(e)}"})
+        error_response.headers.add('Access-Control-Allow-Origin', 'https://travelgenie-9t7r.onrender.com')
+        error_response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return error_response, 502
 
 # --- Run Application ---
 if __name__ == '__main__':
