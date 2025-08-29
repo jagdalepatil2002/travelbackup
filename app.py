@@ -12,7 +12,7 @@ from murf import Murf
 load_dotenv()
 app = Flask(__name__)
 # In production, it's better to restrict this to your frontend's domain
-CORS(app, resources={r"/*": {"origins": "https://travelgenie-9t7r.onrender.com"}})
+CORS(app, resources={r"/*": {"origins": "https://travelgenie-9t7r.onrender.com"}}, allow_headers=["Content-Type"])
 
 # Configure Database
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
@@ -104,7 +104,7 @@ def search_places():
         return jsonify({"error": "Failed to fetch places from AI model."}), 500
 
 @app.route('/place-details', methods=['POST'])
-def get_place_details_route():
+def get_place_details():
     """
     Endpoint to get detailed, conversational info about a single place.
     Checks the database first before making the second, more expensive LLM call.
