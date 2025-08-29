@@ -1,16 +1,19 @@
-# Ignore Python cache files
+# Python
 __pycache__/
 *.pyc
-
-# Ignore virtual environment folder (if you use one)
-venv/
-.venv/
+*.pyo
+*.pyd
+.Python
 env/
-.env/
+venv/
+ENV/
+.venv/
 
-# Ignore sensitive environment variables
+# Environment variables
 .env
 
-# Ignore IDE-specific files
+# IDE / Editor specific
 .vscode/
 .idea/
+*.swp
+*.swo
