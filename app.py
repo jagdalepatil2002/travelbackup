@@ -7,27 +7,17 @@ import prompts
 from database import db, init_db, get_cached_search, save_search_result, get_place_details, save_place_details
 import google.generativeai as genai
 from dotenv import load_dotenv
-from murf import Murf
 
 # --- Initialization ---
 load_dotenv()
 app = Flask(__name__)
 
-# CORS Configuration
+# CORS Configuration - simplified since no TTS endpoint needed
 CORS(app, 
      origins=["https://travelgenie-9t7r.onrender.com"], 
-     methods=["GET", "POST", "OPTIONS"], 
+     methods=["GET", "POST"], 
      allow_headers=["Content-Type", "Authorization"],
      supports_credentials=True)
-
-# Global CORS handler
-@app.after_request
-def after_request(response):
-    response.headers.add('Access-Control-Allow-Origin', 'https://travelgenie-9t7r.onrender.com')
-    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
-    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
-    response.headers.add('Access-Control-Allow-Credentials', 'true')
-    return response
 
 # Configure Database
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
@@ -156,58 +146,6 @@ def get_place_details_route():
         return jsonify({"description": detailed_description, "token_count": token_count})
     except Exception as e:
         return jsonify({"error": "Failed to generate details from AI model."}), 500
-
-# --- Text-to-Speech Endpoint ---
-@app.route('/api/text-to-speech', methods=['POST', 'OPTIONS'])
-def text_to_speech():
-    # Handle preflight OPTIONS request
-    if request.method == 'OPTIONS':
-        response = Response(status=200)
-        response.headers['Access-Control-Allow-Origin'] = 'https://travelgenie-9t7r.onrender.com'
-        response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
-        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
-        response.headers['Access-Control-Allow-Credentials'] = 'true'
-        response.headers['Access-Control-Max-Age'] = '3600'
-        return response
-
-    # Add CORS headers to all responses
-    def add_cors_headers(response):
-        response.headers['Access-Control-Allow-Origin'] = 'https://travelgenie-9t7r.onrender.com'
-        response.headers['Access-Control-Allow-Credentials'] = 'true'
-        return response
-
-    try:
-        data = request.get_json()
-        if not data:
-            return add_cors_headers(jsonify({"error": "No JSON data provided"})), 400
-            
-        text_to_speak = data.get('text')
-        if not text_to_speak:
-            return add_cors_headers(jsonify({"error": "No text provided"})), 400
-
-        # Truncate text to fit within Murf's 3000 character limit
-        if len(text_to_speak) > 3000:
-            text_to_speak = text_to_speak[:3000]
-
-        if not os.getenv("MURF_API_KEY"):
-            raise ValueError("MURF_API_KEY not found in environment variables.")
-
-        client = Murf()
-        voice_id = "en-US-terrell"
-
-        speech_response = client.text_to_speech.generate(
-            text=text_to_speak,
-            voice_id=voice_id
-        )
-
-        audio_url = getattr(speech_response, 'audio_file', None)
-        if not audio_url:
-            raise ValueError("No audio URL in Murf API response.")
-
-        return add_cors_headers(jsonify({"audio_url": audio_url}))
-
-    except Exception as e:
-        return add_cors_headers(jsonify({"error": f"Failed to convert text to speech: {str(e)}"})), 502
 
 # --- Run Application ---
 if __name__ == '__main__':
