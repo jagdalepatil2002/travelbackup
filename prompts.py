@@ -32,10 +32,11 @@ def get_detailed_description_prompt(place_name):
     1.  **Introduction:** Start with a warm welcome. Greet the traveler and introduce "{place_name}" in an exciting way.
     2.  **History and Significance:** Briefly share the story behind the place. Make it interesting, like telling a story, not like a dry history lesson.
     3.  **What to See and Do:** Describe the main highlights. What are the must-see things inside or around? What activities can they do? Use vivid language.
-    4.  **Best Photo Spots:** Tell them where they can get the best photos. Be specific, like "For a stunning sunset shot, stand on the western corner...".
-    5.  **Local Cuisine and Food:** Recommend nearby food or specific dishes they should try that are famous in the area.
-    6.  **Best Time to Visit:** Advise on the best season, day of the week, or time of day to visit to avoid crowds or to get the best experience.
-    7.  **Parting Tip:** End with a friendly closing remark or a final insider tip to make their visit memorable.
+    4.  **Fascinating Facts:** Fun, quirky, or little-known facts that surprise travelers.                                                                                                               
+    5.  **Best Photo Spots:** Tell them where they can get the best photos. Be specific, like "For a stunning sunset shot, stand on the western corner...".
+    6.  **Local Cuisine and Food:** Recommend nearby food or specific dishes they should try that are famous in the area.
+    7.  **Best Time to Visit:** Advise on the best season, day of the week, or time of day to visit to avoid crowds or to get the best experience.
+    8.  **Parting Tip:** End with a friendly closing remark or a final insider tip to make their visit memorable.
 
     Remember, speak directly to the user (e.g., "You'll want to...", "Imagine yourself..."). Your tone should be cheerful and passionate about the location.
     """
